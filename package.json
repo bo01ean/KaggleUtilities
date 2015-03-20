@@ -1,0 +1,17 @@
+{
+  "name": "Kaggle Utilities",
+  "version": "1.0.0",
+  "description": "Some Utilities for working with Kaggle Data Sets written with Node.js",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "debug": "^2.1.3",
+    "express": "^4.12.3",
+    "kue": "^0.8.11",
+    "q": "^1.2.0"
+  }
+}
