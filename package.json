@@ -1,5 +1,5 @@
 {
-  "name": "Kaggle Utilities",
+  "name": "KaggleUtilities",
   "version": "1.0.0",
   "description": "Some Utilities for working with Kaggle Data Sets written with Node.js",
   "main": "index.js",

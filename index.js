@@ -1,6 +1,12 @@
 var kue = require('kue')
     , cluster = require('cluster')
-    , jobs = kue.createQueue();
+    , queue = kue.createQueue(
+        {redis: {
+        host: '192.168.1.179',
+        options: {}
+        // see https://github.com/mranney/node_redis#rediscreateclient
+    }}
+    );
 var numCPUs = require('os').cpus().length;
 var exec = require('child_process').exec;
 var debug = require("debug")("app")
@@ -31,31 +37,38 @@ if (cluster.isMaster) {
         console.log('worker ' + worker.process.pid + ' died');
     });
 } else {
+
     debug('I am worker #' + cluster.worker.id);
-
-    jobs.process('Image Conversion', 2, function (job, done) {
-        var fileInfo = job.data.data;
-        var infile = fileInfo.infile;
-        var outfile = fileInfo.outfile;
-
-        debug("job process " + fileInfo.infile);
-
-        exec(makeConvertCommand(infile, outfile), function(err, data){
-            job.progress(1, 3);
-            exec(makeConvertCommand(outfile, outfile), function(err, data){
-                job.progress(2, 3);
-                exec(makeConvertCommand(outfile, outfile), function(err, data){
-                    job.progress(3, 3);
-                    done();
-                });
-            });
-        });
-
+    queue.process('Image Conversion', 1, function (job, done) {
+        debug("job process " + job.data.data.infile);
+        cropAndResize(job.data.data.infile, job.data.data.outfile, job, done);
     });
 }
 
-function getFileList() {
+/****
+ * Workflow for crop and resize
+ * @param infile
+ * @param outfile
+ * @param job
+ */
+function cropAndResize(infile, outfile, job, done) {
+    exec(makeTilesFromImage(infile, outfile), function(err, data){
+        job.progress(1, 3);
+        exec(makeConvertCommand(infile, outfile), function(err, data){
+            job.progress(2, 3);
+            exec(makeConvertCommand(outfile, outfile), function(err, data){
+                job.progress(3, 3);
+                done();
+            });
+        });
+    });
+}
 
+/**
+ * Get list of files to work on
+ * @returns {*}
+ */
+function getFileList() {
     var deferred = Q.defer();
     // Read the directory
     fs.readdir(inpath, function (err, list) {
@@ -70,13 +83,16 @@ function getFileList() {
     return deferred.promise;
 }
 
+/***
+ * Make Jobs from datasource
+ */
 function createImageProcessingJobs(){
     getFileList().then(
         function(){
             debug(filesToProcess.length);
             filesToProcess.forEach(function(file){
                 debug(file.infile);
-                var job = jobs.create('Image Conversion', {
+                var job = queue.create('Image Conversion', {
                     title: 'Convert: ' + file.infile, data:file
                     , user: 1
                 });
@@ -94,24 +110,20 @@ function createImageProcessingJobs(){
     );
 }
 
-function convertFile(infile, outfile) {
-	exec(makeConvertCommand(infile, outfile), function(err, data){
-		exec(makeConvertCommand(outfile, outfile), function(err, data){
-			exec(makeConvertCommand(outfile, outfile), function(err, data){
-			});
-		});
-	});
+function makeTilesFromImage(x, y, file, out) {
+    return "convert -crop "+x+"x"+y +"@ "+file+"  " + out + "%d.png";
 }
-
+/**
+ * Generate Commands from a string
+ * @param infile
+ * @param outfile
+ * @returns {string}
+ */
 function makeConvertCommand(infile, outfile){
-    /*
-     convert 7_right.jpeg -trim -resize 100x100  -channel G -separate out/7_right_a.png
-     convert out/7_right_a.png -trim -resize 100x100  -channel G -separate  out/7_right_b.png
-     */
     // crop black bars for usable areas of image
     // drop red and blue channels
     // resize to 100x100 ( constrain proportions)
-	return "convert " + infile + " -trim -resize 100x100  -channel G -separate " + outfile;
+	return "convert " + infile + " -trim -channel G -separate " + outfile;
 }
 // Loop through images
 
